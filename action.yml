@@ -1,0 +1,71 @@
+name: 'Erlang Setup'
+description: 'Setup Erlang/OTP, rebar3, and restore build caches'
+author: 'novaframework'
+
+branding:
+  icon: 'box'
+  color: 'red'
+
+inputs:
+  otp-version:
+    description: 'Erlang/OTP version to install'
+    required: false
+    default: ''
+  rebar3-version:
+    description: 'Rebar3 version to install'
+    required: false
+    default: '3'
+  version-file:
+    description: 'File to read versions from (.tool-versions or mise.toml)'
+    required: false
+    default: ''
+  version-type:
+    description: 'Version match type (strict or loose)'
+    required: false
+    default: 'loose'
+  cache-key-prefix:
+    description: 'Custom cache key prefix'
+    required: false
+    default: 'erlang-ci'
+
+outputs:
+  otp-version:
+    description: 'Installed OTP version'
+    value: ${{ steps.setup-beam.outputs.otp-version }}
+  rebar3-version:
+    description: 'Installed rebar3 version'
+    value: ${{ steps.setup-beam.outputs.rebar3-version }}
+  cache-hit:
+    description: 'Whether build cache was hit'
+    value: ${{ steps.build-cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Erlang/OTP & rebar3
+      id: setup-beam
+      uses: erlef/setup-beam@v1
+      with:
+        otp-version: ${{ inputs.otp-version }}
+        rebar3-version: ${{ inputs.rebar3-version }}
+        version-file: ${{ inputs.version-file || '' }}
+        version-type: ${{ inputs.version-type }}
+
+    - name: Restore rebar3 cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/rebar3
+        key: ${{ inputs.cache-key-prefix }}-rebar3-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('rebar.config') }}
+        restore-keys: |
+          ${{ inputs.cache-key-prefix }}-rebar3-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-
+          ${{ inputs.cache-key-prefix }}-rebar3-${{ runner.os }}-
+
+    - name: Restore build cache
+      id: build-cache
+      uses: actions/cache@v4
+      with:
+        path: _build
+        key: ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('rebar.lock') }}
+        restore-keys: |
+          ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-
+          ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-

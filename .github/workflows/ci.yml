@@ -1,0 +1,306 @@
+name: Erlang CI
+
+on:
+  workflow_call:
+    inputs:
+      otp-version:
+        description: 'Erlang/OTP version (e.g. "28.0"). Ignored if version-file is set.'
+        type: string
+        required: false
+        default: '28'
+      rebar3-version:
+        description: 'Rebar3 version'
+        type: string
+        required: false
+        default: '3'
+      version-file:
+        description: 'Read versions from file (.tool-versions or mise.toml)'
+        type: string
+        required: false
+        default: ''
+      otp-matrix:
+        description: 'JSON array of OTP versions for matrix testing (e.g. ''["27","28"]''). Tests run on all, dialyzer on latest only.'
+        type: string
+        required: false
+        default: ''
+
+      # Steps to enable/disable
+      enable-fmt:
+        description: 'Run rebar3 fmt --check'
+        type: boolean
+        required: false
+        default: true
+      enable-xref:
+        description: 'Run rebar3 xref'
+        type: boolean
+        required: false
+        default: true
+      enable-dialyzer:
+        description: 'Run rebar3 dialyzer'
+        type: boolean
+        required: false
+        default: true
+      enable-eunit:
+        description: 'Run rebar3 eunit'
+        type: boolean
+        required: false
+        default: true
+      enable-ct:
+        description: 'Run rebar3 ct'
+        type: boolean
+        required: false
+        default: false
+      enable-ex-doc:
+        description: 'Run rebar3 ex_doc'
+        type: boolean
+        required: false
+        default: false
+      enable-audit:
+        description: 'Run rebar3 audit (requires rebar3_audit plugin)'
+        type: boolean
+        required: false
+        default: false
+      enable-coverage:
+        description: 'Enable code coverage (--cover flag + covertool)'
+        type: boolean
+        required: false
+        default: false
+
+      # Database
+      postgres:
+        description: 'Enable PostgreSQL service container'
+        type: boolean
+        required: false
+        default: false
+      postgres-version:
+        description: 'PostgreSQL version'
+        type: string
+        required: false
+        default: '17'
+      postgres-db:
+        description: 'PostgreSQL database name'
+        type: string
+        required: false
+        default: 'test_db'
+      postgres-user:
+        description: 'PostgreSQL username'
+        type: string
+        required: false
+        default: 'postgres'
+      postgres-password:
+        description: 'PostgreSQL password'
+        type: string
+        required: false
+        default: 'postgres'
+      postgres-port:
+        description: 'PostgreSQL port'
+        type: string
+        required: false
+        default: '5432'
+
+      # Extra
+      ct-config:
+        description: 'Path to CT sys.config file (passed as --sys_config)'
+        type: string
+        required: false
+        default: ''
+      rebar3-compile-args:
+        description: 'Extra args for rebar3 compile'
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  compile:
+    name: Compile
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        id: setup
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - name: Compile
+        run: rebar3 compile ${{ inputs.rebar3-compile-args }}
+      - name: Check for uncommitted artifacts
+        run: git diff --exit-code
+
+  fmt:
+    name: Format
+    needs: compile
+    if: ${{ inputs.enable-fmt }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - run: rebar3 fmt --check
+
+  xref:
+    name: Xref
+    needs: compile
+    if: ${{ inputs.enable-xref }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - run: rebar3 xref
+
+  dialyzer:
+    name: Dialyzer
+    needs: compile
+    if: ${{ inputs.enable-dialyzer }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - name: Restore PLT cache
+        uses: actions/cache@v4
+        with:
+          path: _build/default/*_plt*
+          key: erlang-ci-plt-${{ runner.os }}-otp-${{ inputs.otp-version }}-${{ hashFiles('rebar.lock') }}
+          restore-keys: |
+            erlang-ci-plt-${{ runner.os }}-otp-${{ inputs.otp-version }}-
+      - run: rebar3 dialyzer
+
+  audit:
+    name: Audit
+    needs: compile
+    if: ${{ inputs.enable-audit }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - run: rebar3 audit
+
+  eunit:
+    name: EUnit${{ matrix.otp && format(' (OTP {0})', matrix.otp) || '' }}
+    needs: compile
+    if: ${{ inputs.enable-eunit }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+      - name: EUnit
+        run: rebar3 eunit ${{ inputs.enable-coverage && '--cover' || '' }}
+      - name: Generate coverage
+        if: ${{ inputs.enable-coverage }}
+        run: rebar3 covertool generate
+      - name: Upload coverage
+        if: ${{ inputs.enable-coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: _build/test/covertool/*.covertool.xml
+          flags: eunit
+
+  ct:
+    name: Common Test${{ matrix.otp && format(' (OTP {0})', matrix.otp) || '' }}
+    needs: compile
+    if: ${{ inputs.enable-ct && !inputs.postgres }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+      - name: Common Test
+        run: rebar3 ct ${{ inputs.ct-config && format('--sys_config {0}', inputs.ct-config) || '' }} ${{ inputs.enable-coverage && '--cover' || '' }}
+      - name: Generate coverage
+        if: ${{ inputs.enable-coverage }}
+        run: rebar3 covertool generate
+      - name: Upload coverage
+        if: ${{ inputs.enable-coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: _build/test/covertool/*.covertool.xml
+          flags: ct
+
+  ct-postgres:
+    name: Common Test${{ matrix.otp && format(' (OTP {0})', matrix.otp) || '' }}
+    needs: compile
+    if: ${{ inputs.enable-ct && inputs.postgres }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    services:
+      postgres:
+        image: postgres:${{ inputs.postgres-version }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - ${{ inputs.postgres-port }}:5432
+    env:
+      PGHOST: localhost
+      PGPORT: ${{ inputs.postgres-port }}
+      PGUSER: ${{ inputs.postgres-user }}
+      PGPASSWORD: ${{ inputs.postgres-password }}
+      PGDATABASE: ${{ inputs.postgres-db }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+      - name: Common Test
+        run: rebar3 ct ${{ inputs.ct-config && format('--sys_config {0}', inputs.ct-config) || '' }} ${{ inputs.enable-coverage && '--cover' || '' }}
+      - name: Generate coverage
+        if: ${{ inputs.enable-coverage }}
+        run: rebar3 covertool generate
+      - name: Upload coverage
+        if: ${{ inputs.enable-coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: _build/test/covertool/*.covertool.xml
+          flags: ct
+
+  ex-doc:
+    name: Documentation
+    needs: compile
+    if: ${{ inputs.enable-ex-doc }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: novaframework/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - run: rebar3 ex_doc
