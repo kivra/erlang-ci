@@ -2,10 +2,10 @@
 
 A standardized CI pipeline for Erlang/OTP projects.
 
-Provides two things:
+**Two ways to use it:**
 
-1. **Reusable workflow** — a complete CI pipeline with parallel jobs for compile, format, xref, dialyzer, eunit, common test, and more
-2. **Composite action** — setup Erlang/OTP + rebar3 with build caching (used internally, also available standalone)
+1. **Reusable workflow** — a complete CI pipeline with parallel jobs
+2. **Composite action** — just setup + caching, bring your own jobs
 
 ## Quick start
 
@@ -13,6 +13,7 @@ Create `.github/workflows/ci.yml` in your project:
 
 ```yaml
 name: CI
+
 on:
   push:
     branches: [main]
@@ -25,11 +26,49 @@ jobs:
       otp-version: '28'
 ```
 
-That's it. This runs: **compile → fmt → xref → dialyzer → eunit** in parallel after compile.
+This runs **compile → fmt | xref | dialyzer | eunit** in parallel.
+
+## Pipeline
+
+After compile, all enabled steps run in parallel:
+
+```
+                    ┌─ fmt ──────────┐
+                    ├─ xref ─────────┤
+compile ──────────► ├─ dialyzer ─────┤
+                    ├─ eunit ────────┤
+                    ├─ ct ───────────┤
+                    ├─ ex-doc ───────┤
+                    └─ audit ────────┘
+```
+
+| Step | Default | Input |
+|------|---------|-------|
+| Compile | always | — |
+| Format (`rebar3 fmt --check`) | **on** | `enable-fmt` |
+| Xref | **on** | `enable-xref` |
+| Dialyzer | **on** | `enable-dialyzer` |
+| EUnit | **on** | `enable-eunit` |
+| Common Test | off | `enable-ct` |
+| ExDoc | off | `enable-ex-doc` |
+| Audit | off | `enable-audit` |
+| Coverage | off | `enable-coverage` |
 
 ## Examples
 
-### Library with OTP matrix
+### Simple library
+
+```yaml
+jobs:
+  ci:
+    uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
+    with:
+      otp-version: '28'
+```
+
+### Library with OTP version matrix
+
+Tests run on all OTP versions. Dialyzer, xref, and fmt run on the primary version only.
 
 ```yaml
 jobs:
@@ -40,9 +79,9 @@ jobs:
       otp-matrix: '["27", "28"]'
 ```
 
-Tests run on all OTP versions. Dialyzer, xref, and fmt run on the primary version only.
-
 ### Web application with PostgreSQL
+
+When `postgres: true` is set, both eunit and CT jobs get a PostgreSQL service container. PG connection details are available as environment variables (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`).
 
 ```yaml
 jobs:
@@ -53,9 +92,10 @@ jobs:
       enable-ct: true
       postgres: true
       postgres-version: '17'
+      postgres-db: 'myapp_test'
 ```
 
-### Full pipeline
+### Full pipeline with coverage
 
 ```yaml
 jobs:
@@ -81,9 +121,32 @@ jobs:
       version-file: '.tool-versions'
 ```
 
+### Mix with custom jobs
+
+Use the reusable workflow for the standard pipeline, then add custom jobs alongside:
+
+```yaml
+jobs:
+  ci:
+    uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
+    with:
+      otp-version: '28'
+
+  integration:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Taure/erlang-ci@v1
+        with:
+          otp-version: '28'
+      - run: rebar3 compile
+      - run: ./scripts/integration_test.sh
+```
+
 ### Standalone setup action
 
-If you prefer writing your own workflow but want the setup+caching handled:
+If you prefer writing your own workflow but want the setup and caching handled:
 
 ```yaml
 steps:
@@ -95,21 +158,10 @@ steps:
   - run: rebar3 eunit
 ```
 
-## Pipeline steps
-
-All steps after compile run in **parallel**:
-
-| Step | Default | Input |
-|------|---------|-------|
-| Compile | always | — |
-| Format check | on | `enable-fmt` |
-| Xref | on | `enable-xref` |
-| Dialyzer | on | `enable-dialyzer` |
-| EUnit | on | `enable-eunit` |
-| Common Test | off | `enable-ct` |
-| ExDoc | off | `enable-ex-doc` |
-| Audit | off | `enable-audit` |
-| Coverage | off | `enable-coverage` |
+The composite action handles:
+- Installing Erlang/OTP and rebar3 via [erlef/setup-beam](https://github.com/erlef/setup-beam)
+- Caching `~/.cache/rebar3` (hex packages, plugins)
+- Caching `_build` (compiled dependencies)
 
 ## Inputs reference
 
@@ -120,32 +172,46 @@ All steps after compile run in **parallel**:
 | `otp-version` | `28` | Erlang/OTP version |
 | `rebar3-version` | `3` | Rebar3 version |
 | `version-file` | — | Read versions from `.tool-versions` or `mise.toml` |
-| `otp-matrix` | — | JSON array of OTP versions for matrix testing |
+| `otp-matrix` | — | JSON array of OTP versions for matrix testing (e.g. `'["27","28"]'`) |
 
 ### PostgreSQL
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `postgres` | `false` | Enable PostgreSQL service |
-| `postgres-version` | `17` | PostgreSQL version |
+| `postgres` | `false` | Enable PostgreSQL service for eunit and CT |
+| `postgres-version` | `17` | PostgreSQL Docker image version |
 | `postgres-db` | `test_db` | Database name |
 | `postgres-user` | `postgres` | Username |
 | `postgres-password` | `postgres` | Password |
-| `postgres-port` | `5432` | Port |
+| `postgres-port` | `5432` | Host port |
 
 ### Other
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `ct-config` | — | Path to CT sys.config file |
-| `rebar3-compile-args` | — | Extra args for rebar3 compile |
+| `rebar3-compile-args` | — | Extra args for `rebar3 compile` |
+
+## Real-world usage
+
+These projects use erlang-ci:
+
+| Project | Config |
+|---------|--------|
+| [Nova](https://github.com/novaframework/nova) | OTP matrix 26/27/28, fmt, + nova_request_app integration |
+| [Kura](https://github.com/novaframework/kura) | PostgreSQL, CT, eunit, ex_doc, + release job |
+| [rebar3_fly](https://github.com/novaframework/rebar3_fly) | OTP matrix 27/28, ex_doc |
+| [rebar3_kura](https://github.com/novaframework/rebar3_kura) | OTP matrix 27/28 |
+| [rebar3_audit](https://github.com/novaframework/rebar3_audit) | Standard + custom dogfood job |
 
 ## What this replaces
 
-Instead of copying ~50 lines of YAML into every Erlang project, you get:
+Instead of copying 50-120 lines of boilerplate YAML into every Erlang project:
 
 ```yaml
-# before: 50+ lines of setup, caching, steps, matrix config
+# before: setup-beam, cache config, compile, fmt, xref, dialyzer, eunit...
+# repeated in every repo, drifting apart over time
+
 # after:
 uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
 with:
