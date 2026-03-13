@@ -193,12 +193,59 @@ jobs:
   eunit:
     name: EUnit${{ matrix.otp && format(' (OTP {0})', matrix.otp) || '' }}
     needs: compile
-    if: ${{ inputs.enable-eunit }}
+    if: ${{ inputs.enable-eunit && !inputs.postgres }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Taure/erlang-ci@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+      - name: EUnit
+        run: rebar3 eunit ${{ inputs.enable-coverage && '--cover' || '' }}
+      - name: Generate coverage
+        if: ${{ inputs.enable-coverage }}
+        run: rebar3 covertool generate
+      - name: Upload coverage
+        if: ${{ inputs.enable-coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: _build/test/covertool/*.covertool.xml
+          flags: eunit
+
+  eunit-postgres:
+    name: EUnit${{ matrix.otp && format(' (OTP {0})', matrix.otp) || '' }}
+    needs: compile
+    if: ${{ inputs.enable-eunit && inputs.postgres }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    services:
+      postgres:
+        image: postgres:${{ inputs.postgres-version }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - ${{ inputs.postgres-port }}:5432
+    env:
+      PGHOST: localhost
+      PGPORT: ${{ inputs.postgres-port }}
+      PGUSER: ${{ inputs.postgres-user }}
+      PGPASSWORD: ${{ inputs.postgres-password }}
+      PGDATABASE: ${{ inputs.postgres-db }}
     steps:
       - uses: actions/checkout@v4
       - uses: Taure/erlang-ci@v1
