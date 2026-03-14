@@ -65,6 +65,16 @@ on:
         type: boolean
         required: false
         default: false
+      enable-sbom:
+        description: 'Generate CycloneDX SBOM (requires rebar3_sbom plugin)'
+        type: boolean
+        required: false
+        default: false
+      enable-dependency-submission:
+        description: 'Submit dependencies to GitHub Dependency Graph'
+        type: boolean
+        required: false
+        default: false
 
       # Database
       postgres:
@@ -347,6 +357,37 @@ jobs:
         with:
           files: _build/test/covertool/*.covertool.xml
           flags: ct
+
+  sbom:
+    name: SBOM
+    needs: compile
+    if: ${{ inputs.enable-sbom }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Taure/erlang-ci@v1
+        with:
+          otp-version: ${{ inputs.otp-version }}
+          rebar3-version: ${{ inputs.rebar3-version }}
+          version-file: ${{ inputs.version-file }}
+      - name: Generate SBOM
+        run: rebar3 sbom --format json --output bom.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: bom.json
+
+  dependency-submission:
+    name: Dependency Submission
+    needs: compile
+    if: ${{ inputs.enable-dependency-submission }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/rebar3-dependency-submission@v1
 
   ex-doc:
     name: Documentation

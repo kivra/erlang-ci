@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      cliff-config:
+        description: 'Path to cliff.toml config file'
+        type: string
+        required: false
+        default: 'cliff.toml'
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next version
+        id: version
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            echo "next=v0.1.0" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Calculate bumped version
+        if: steps.version.outputs.skip == 'false'
+        uses: orhun/git-cliff-action@v4
+        id: bump
+        with:
+          config: ${{ inputs.cliff-config }}
+          args: --bumped-version
+
+      - name: Check if version changed
+        if: steps.version.outputs.skip == 'false'
+        id: check
+        run: |
+          NEXT="${{ steps.bump.outputs.version }}"
+          LATEST="${{ steps.version.outputs.latest }}"
+          if [ "$NEXT" = "$LATEST" ] || [ -z "$NEXT" ]; then
+            echo "No version bump needed"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Bumping from $LATEST to $NEXT"
+            echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog
+        if: steps.check.outputs.skip == 'false'
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: ${{ inputs.cliff-config }}
+          args: --unreleased --strip header --tag ${{ steps.check.outputs.next }}
+
+      - name: Create tag and release
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.check.outputs.next }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$CHANGELOG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGELOG: ${{ steps.changelog.outputs.content }}
