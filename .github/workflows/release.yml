@@ -44,7 +44,7 @@ jobs:
         if: steps.version.outputs.initial == 'false'
         id: check
         run: |
-          NEXT="${{ steps.bump.outputs.version }}"
+          NEXT=$(echo "${{ steps.bump.outputs.content }}" | tr -d '[:space:]')
           LATEST="${{ steps.version.outputs.latest }}"
           if [ "$NEXT" = "$LATEST" ] || [ -z "$NEXT" ]; then
             echo "No version bump needed"
