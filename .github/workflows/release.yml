@@ -24,15 +24,16 @@ jobs:
         run: |
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags — initial release as v0.1.0"
             echo "next=v0.1.0" >> "$GITHUB_OUTPUT"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "initial=true" >> "$GITHUB_OUTPUT"
           else
             echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "initial=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Calculate bumped version
-        if: steps.version.outputs.skip == 'false'
+        if: steps.version.outputs.initial == 'false'
         uses: orhun/git-cliff-action@v4
         id: bump
         with:
@@ -40,7 +41,7 @@ jobs:
           args: --bumped-version
 
       - name: Check if version changed
-        if: steps.version.outputs.skip == 'false'
+        if: steps.version.outputs.initial == 'false'
         id: check
         run: |
           NEXT="${{ steps.bump.outputs.version }}"
@@ -54,18 +55,29 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve version
+        id: resolve
+        run: |
+          if [ "${{ steps.version.outputs.initial }}" = "true" ]; then
+            echo "next=${{ steps.version.outputs.next }}" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "next=${{ steps.check.outputs.next }}" >> "$GITHUB_OUTPUT"
+            echo "skip=${{ steps.check.outputs.skip }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate changelog
-        if: steps.check.outputs.skip == 'false'
+        if: steps.resolve.outputs.skip == 'false'
         uses: orhun/git-cliff-action@v4
         id: changelog
         with:
           config: ${{ inputs.cliff-config }}
-          args: --unreleased --strip header --tag ${{ steps.check.outputs.next }}
+          args: --unreleased --strip header --tag ${{ steps.resolve.outputs.next }}
 
       - name: Create tag and release
-        if: steps.check.outputs.skip == 'false'
+        if: steps.resolve.outputs.skip == 'false'
         run: |
-          TAG="${{ steps.check.outputs.next }}"
+          TAG="${{ steps.resolve.outputs.next }}"
           git tag "$TAG"
           git push origin "$TAG"
           gh release create "$TAG" \
