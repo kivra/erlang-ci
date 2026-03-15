@@ -70,6 +70,11 @@ on:
         type: boolean
         required: false
         default: false
+      enable-sbom-scan:
+        description: 'Scan SBOM for vulnerabilities using Grype (requires enable-sbom)'
+        type: boolean
+        required: false
+        default: false
       enable-dependency-submission:
         description: 'Submit dependencies to GitHub Dependency Graph'
         type: boolean
@@ -380,6 +385,13 @@ jobs:
           version-file: ${{ inputs.version-file }}
       - name: Generate SBOM
         run: rebar3 sbom --format json --output bom.json
+      - name: Scan SBOM for vulnerabilities
+        if: ${{ inputs.enable-sbom-scan }}
+        uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7
+        with:
+          sbom: bom.json
+          fail-build: true
+          severity-cutoff: high
       - name: Upload SBOM
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
