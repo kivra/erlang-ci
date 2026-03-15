@@ -95,7 +95,7 @@ jobs:
       # --- Audit (mirrors ci.yml audit job command) ---
       - name: Audit
         working-directory: test/fixtures
-        run: rebar3 audit --format json
+        run: rebar3 audit --format json --level low
 
       # --- SBOM (mirrors ci.yml sbom job command) ---
       - name: SBOM generate
