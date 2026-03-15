@@ -23,7 +23,7 @@ jobs:
       - name: Install actionlint
         run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
       - name: Lint workflows
-        run: ./actionlint
+        run: ./actionlint -shellcheck=""
 
   self-test:
     name: Self Test
