@@ -159,7 +159,9 @@ jobs:
     name: Compile
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         id: setup
         with:
@@ -167,7 +169,9 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
       - name: Compile
-        run: rebar3 compile ${{ inputs.rebar3-compile-args }}
+        env:
+          COMPILE_ARGS: ${{ inputs.rebar3-compile-args }}
+        run: rebar3 compile $COMPILE_ARGS
       - name: Check for uncommitted artifacts
         run: git diff --exit-code
 
@@ -177,7 +181,9 @@ jobs:
     if: ${{ inputs.enable-fmt }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -191,7 +197,9 @@ jobs:
     if: ${{ inputs.enable-xref }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -205,14 +213,16 @@ jobs:
     if: ${{ inputs.enable-dialyzer }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
       - name: Restore PLT cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: _build/default/*_plt*
           key: erlang-ci-plt-${{ runner.os }}-otp-${{ inputs.otp-version }}-${{ hashFiles('rebar.lock') }}
@@ -228,7 +238,9 @@ jobs:
     outputs:
       json: ${{ steps.audit.outputs.json }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -273,7 +285,9 @@ jobs:
       KAFKA_HOST: ${{ inputs.kafka && 'localhost' || '' }}
       KAFKA_PORT: ${{ inputs.kafka-port }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ matrix.otp }}
@@ -287,13 +301,16 @@ jobs:
           KAFKA_VERSION: ${{ inputs.kafka-version }}
         run: curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/start-services.sh | bash
       - name: EUnit
-        run: rebar3 eunit ${{ inputs.eunit-args }} ${{ inputs.enable-coverage && '--cover' || '' }}
+        env:
+          EUNIT_ARGS: ${{ inputs.eunit-args }}
+          COVER_FLAG: ${{ inputs.enable-coverage && '--cover' || '' }}
+        run: rebar3 eunit $EUNIT_ARGS $COVER_FLAG
       - name: Generate coverage
         if: ${{ inputs.enable-coverage }}
         run: rebar3 covertool generate
       - name: Upload coverage
         if: ${{ inputs.enable-coverage }}
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: _build/test/covertool/*.covertool.xml
           flags: eunit
@@ -316,7 +333,9 @@ jobs:
       KAFKA_HOST: ${{ inputs.kafka && 'localhost' || '' }}
       KAFKA_PORT: ${{ inputs.kafka-port }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ matrix.otp }}
@@ -330,13 +349,17 @@ jobs:
           KAFKA_VERSION: ${{ inputs.kafka-version }}
         run: curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/start-services.sh | bash
       - name: Common Test
-        run: rebar3 ct ${{ inputs.ct-args }} ${{ inputs.ct-config && format('--sys_config {0}', inputs.ct-config) || '' }} ${{ inputs.enable-coverage && '--cover' || '' }}
+        env:
+          CT_ARGS: ${{ inputs.ct-args }}
+          CT_CONFIG: ${{ inputs.ct-config && format('--sys_config {0}', inputs.ct-config) || '' }}
+          COVER_FLAG: ${{ inputs.enable-coverage && '--cover' || '' }}
+        run: rebar3 ct $CT_ARGS $CT_CONFIG $COVER_FLAG
       - name: Generate coverage
         if: ${{ inputs.enable-coverage }}
         run: rebar3 covertool generate
       - name: Upload coverage
         if: ${{ inputs.enable-coverage }}
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: _build/test/covertool/*.covertool.xml
           flags: ct
@@ -347,7 +370,9 @@ jobs:
     if: ${{ inputs.enable-sbom }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -356,7 +381,7 @@ jobs:
       - name: Generate SBOM
         run: rebar3 sbom --format json --output bom.json
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom
           path: bom.json
@@ -367,8 +392,10 @@ jobs:
     if: ${{ inputs.enable-dependency-submission }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: erlef/rebar3-dependency-submission@main
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: erlef/rebar3-dependency-submission@c1870bc7ba79a756cb0bc9749256685e612b737c # main
 
   ex-doc:
     name: Documentation
@@ -376,7 +403,9 @@ jobs:
     if: ${{ inputs.enable-ex-doc }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: Taure/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -390,13 +419,14 @@ jobs:
     needs: [audit]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: Taure/erlang-ci
           ref: v1
           sparse-checkout: scripts
+          persist-credentials: false
       - name: Post summary comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const { renderAuditSummary } = require('./scripts/audit-summary');
