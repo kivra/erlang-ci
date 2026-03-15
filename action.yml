@@ -45,10 +45,13 @@ runs:
     - name: Detect .tool-versions
       id: detect-versions
       shell: bash
+      env:
+        INPUT_VERSION_FILE: ${{ inputs.version-file }}
+        INPUT_OTP_VERSION: ${{ inputs.otp-version }}
       run: |
-        if [ -n "${{ inputs.version-file }}" ]; then
-          echo "file=${{ inputs.version-file }}" >> "$GITHUB_OUTPUT"
-        elif [ -z "${{ inputs.otp-version }}" ] && [ -f .tool-versions ]; then
+        if [ -n "$INPUT_VERSION_FILE" ]; then
+          echo "file=$INPUT_VERSION_FILE" >> "$GITHUB_OUTPUT"
+        elif [ -z "$INPUT_OTP_VERSION" ] && [ -f .tool-versions ]; then
           echo "file=.tool-versions" >> "$GITHUB_OUTPUT"
         else
           echo "file=" >> "$GITHUB_OUTPUT"
@@ -56,7 +59,7 @@ runs:
 
     - name: Setup Erlang/OTP & rebar3
       id: setup-beam
-      uses: erlef/setup-beam@v1
+      uses: erlef/setup-beam@0a75ccf1c18916f948584bdc83392d72e26f58f7 # v1
       with:
         otp-version: ${{ inputs.otp-version }}
         rebar3-version: ${{ inputs.rebar3-version }}
@@ -64,7 +67,7 @@ runs:
         version-type: ${{ inputs.version-type }}
 
     - name: Restore rebar3 cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ~/.cache/rebar3
         key: ${{ inputs.cache-key-prefix }}-rebar3-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('rebar.config') }}
@@ -74,7 +77,7 @@ runs:
 
     - name: Restore build cache
       id: build-cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: _build
         key: ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('rebar.lock') }}
