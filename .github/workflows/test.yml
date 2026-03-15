@@ -1,0 +1,52 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run audit-summary tests
+        run: node --test scripts/audit-summary.test.js
+
+  lint:
+    name: Lint Workflows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        run: |
+          curl -sL https://github.com/rhysd/actionlint/releases/latest/download/actionlint_linux_amd64.tar.gz | tar xz
+          sudo mv actionlint /usr/local/bin/
+      - name: Lint workflows
+        run: actionlint
+
+  self-test:
+    name: Self Test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          otp-version: '28'
+      - name: Compile fixture
+        working-directory: test/fixtures
+        run: rebar3 compile
+      - name: Format check
+        working-directory: test/fixtures
+        run: rebar3 fmt --check
+      - name: Xref
+        working-directory: test/fixtures
+        run: rebar3 xref
+      - name: Dialyzer
+        working-directory: test/fixtures
+        run: rebar3 dialyzer
+      - name: EUnit
+        working-directory: test/fixtures
+        run: rebar3 eunit

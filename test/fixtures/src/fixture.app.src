@@ -1,0 +1,7 @@
+{application, fixture, [
+    {description, "Minimal fixture for erlang-ci self-tests"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {modules, [fixture]}
+]}.
