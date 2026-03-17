@@ -239,7 +239,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         id: setup
         with:
           otp-version: ${{ inputs.otp-version }}
@@ -296,7 +296,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -316,7 +316,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -345,7 +345,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -429,7 +429,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -510,7 +510,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -551,7 +551,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -608,7 +608,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -623,7 +623,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/generate-trivyignore.sh | bash
+          curl -sL https://raw.githubusercontent.com/kivra/erlang-ci/v1/scripts/generate-trivyignore.sh | bash
           if [ -f .trivyignore ]; then
             # Extract ignored CVEs as JSON for the summary comment
             ignored=$(grep -v '^#' .trivyignore | grep -v '^\s*$' | \
@@ -749,7 +749,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: Taure/erlang-ci@v1
+      - uses: kivra/erlang-ci@v1
         with:
           otp-version: ${{ inputs.otp-version }}
           rebar3-version: ${{ inputs.rebar3-version }}
@@ -828,7 +828,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          repository: Taure/erlang-ci
+          repository: kivra/erlang-ci
           ref: v1
           sparse-checkout: scripts
           persist-credentials: false

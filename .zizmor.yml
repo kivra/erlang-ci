@@ -2,6 +2,6 @@ rules:
   unpinned-uses:
     config:
       policies:
-        Taure/erlang-ci: ref-pin
+        kivra/erlang-ci: ref-pin
   secrets-outside-env:
     disable: true

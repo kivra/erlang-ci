@@ -5,5 +5,5 @@
     {applications, [kernel, stdlib]},
     {modules, []},
     {licenses, ["MIT"]},
-    {links, [{"GitHub", "https://github.com/Taure/erlang-ci"}]}
+    {links, [{"GitHub", "https://github.com/kivra/erlang-ci"}]}
 ]}.
