@@ -183,7 +183,7 @@ on:
         description: 'Kafka Docker image version (uses apache/kafka)'
         type: string
         required: false
-        default: '3.9'
+        default: '3.9.0'
       kafka-port:
         description: 'Kafka broker port'
         type: string
