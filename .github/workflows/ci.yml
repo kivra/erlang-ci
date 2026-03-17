@@ -1,7 +1,17 @@
 name: Erlang CI
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
+    secrets:
+      ssh-key:
+        description: 'SSH private key for accessing private dependencies'
+        required: false
+      hex-api-key:
+        description: 'Hex.pm API key for accessing private packages'
+        required: false
     inputs:
       otp-version:
         description: 'Erlang/OTP version (e.g. "28.0"). Ignored if version-file is set.'
@@ -208,11 +218,23 @@ on:
         type: string
         required: false
         default: ''
+      pre-test-command:
+        description: 'Shell command to run before tests (e.g., DB migrations, topic creation)'
+        type: string
+        required: false
+        default: ''
+      extra-services-compose:
+        description: 'Path to docker-compose.yml for additional services'
+        type: string
+        required: false
+        default: ''
 
 jobs:
   compile:
     name: Compile
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -224,6 +246,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - name: Compile
         env:
           COMPILE_ARGS: ${{ inputs.rebar3-compile-args }}
@@ -263,6 +286,8 @@ jobs:
     needs: [compile, prepare-checks]
     if: ${{ needs.prepare-checks.outputs.has-checks == 'true' }}
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     strategy:
       fail-fast: false
       matrix:
@@ -277,6 +302,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - run: rebar3 ${{ matrix.command }}
 
   dialyzer:
@@ -284,6 +310,8 @@ jobs:
     needs: compile
     if: ${{ inputs.enable-dialyzer }}
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -294,6 +322,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - name: Restore PLT cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -308,6 +337,8 @@ jobs:
     needs: compile
     if: ${{ inputs.enable-audit }}
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     outputs:
       json: ${{ steps.audit.outputs.json }}
     steps:
@@ -320,6 +351,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - name: Run audit
         id: audit
         env:
@@ -352,7 +384,40 @@ jobs:
       fail-fast: false
       matrix:
         otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres && format('postgres:{0}', inputs.postgres-version) || '' }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        ports:
+          - ${{ inputs.postgres-port }}:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      kafka:
+        image: ${{ inputs.kafka && format('apache/kafka:{0}', inputs.kafka-version) || '' }}
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:${{ inputs.kafka-port }}
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+          - ${{ inputs.kafka-port }}:9092
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
     env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
       PGHOST: ${{ inputs.postgres && 'localhost' || '' }}
       PGPORT: ${{ inputs.postgres-port }}
       PGUSER: ${{ inputs.postgres-user }}
@@ -368,14 +433,17 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
-      - name: Start services
-        if: ${{ inputs.postgres || inputs.kafka }}
+          ssh-key: ${{ secrets.ssh-key }}
+      - name: Start extra services
+        if: ${{ inputs.extra-services-compose != '' }}
         env:
-          ENABLE_POSTGRES: ${{ inputs.postgres }}
-          POSTGRES_VERSION: ${{ inputs.postgres-version }}
-          ENABLE_KAFKA: ${{ inputs.kafka }}
-          KAFKA_VERSION: ${{ inputs.kafka-version }}
-        run: curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/start-services.sh | bash
+          COMPOSE_FILE: ${{ inputs.extra-services-compose }}
+        run: docker compose -f "$COMPOSE_FILE" up -d --wait
+      - name: Pre-test setup
+        if: ${{ inputs.pre-test-command != '' }}
+        env:
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: eval "$PRE_TEST_COMMAND"
       - name: EUnit
         env:
           EUNIT_ARGS: ${{ inputs.eunit-args }}
@@ -397,7 +465,40 @@ jobs:
       fail-fast: false
       matrix:
         otp: ${{ fromJSON(inputs.otp-matrix || format('["{0}"]', inputs.otp-version)) }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres && format('postgres:{0}', inputs.postgres-version) || '' }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        ports:
+          - ${{ inputs.postgres-port }}:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      kafka:
+        image: ${{ inputs.kafka && format('apache/kafka:{0}', inputs.kafka-version) || '' }}
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:${{ inputs.kafka-port }}
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+          - ${{ inputs.kafka-port }}:9092
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
     env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
       PGHOST: ${{ inputs.postgres && 'localhost' || '' }}
       PGPORT: ${{ inputs.postgres-port }}
       PGUSER: ${{ inputs.postgres-user }}
@@ -413,14 +514,17 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
-      - name: Start services
-        if: ${{ inputs.postgres || inputs.kafka }}
+          ssh-key: ${{ secrets.ssh-key }}
+      - name: Start extra services
+        if: ${{ inputs.extra-services-compose != '' }}
         env:
-          ENABLE_POSTGRES: ${{ inputs.postgres }}
-          POSTGRES_VERSION: ${{ inputs.postgres-version }}
-          ENABLE_KAFKA: ${{ inputs.kafka }}
-          KAFKA_VERSION: ${{ inputs.kafka-version }}
-        run: curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/start-services.sh | bash
+          COMPOSE_FILE: ${{ inputs.extra-services-compose }}
+        run: docker compose -f "$COMPOSE_FILE" up -d --wait
+      - name: Pre-test setup
+        if: ${{ inputs.pre-test-command != '' }}
+        env:
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: eval "$PRE_TEST_COMMAND"
       - name: Common Test
         env:
           CT_ARGS: ${{ inputs.ct-args }}
@@ -439,6 +543,8 @@ jobs:
     needs: [eunit, ct]
     if: ${{ always() && inputs.enable-coverage }}
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     outputs:
       json: ${{ steps.extract.outputs.json }}
     steps:
@@ -451,6 +557,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - name: Download coverdata artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -492,6 +599,8 @@ jobs:
     needs: compile
     if: ${{ inputs.enable-sbom }}
     runs-on: ubuntu-24.04
+    env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
     outputs:
       scan-json: ${{ steps.scan-extract.outputs.json }}
       ignored-json: ${{ steps.trivyignore.outputs.json }}
@@ -505,6 +614,7 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
+          ssh-key: ${{ secrets.ssh-key }}
       - name: Generate SBOM
         run: rebar3 sbom --output bom.xml --force
       - name: Generate .trivyignore from OTP advisories
@@ -577,6 +687,8 @@ jobs:
     name: Dependency Submission
     needs: compile
     if: ${{ inputs.enable-dependency-submission && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -591,7 +703,40 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       json: ${{ steps.extract.outputs.json }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres && format('postgres:{0}', inputs.postgres-version) || '' }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        ports:
+          - ${{ inputs.postgres-port }}:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      kafka:
+        image: ${{ inputs.kafka && format('apache/kafka:{0}', inputs.kafka-version) || '' }}
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:${{ inputs.kafka-port }}
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+          - ${{ inputs.kafka-port }}:9092
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
     env:
+      HEX_API_KEY: ${{ secrets.hex-api-key }}
       PGHOST: ${{ inputs.postgres && 'localhost' || '' }}
       PGPORT: ${{ inputs.postgres-port }}
       PGUSER: ${{ inputs.postgres-user }}
@@ -610,14 +755,17 @@ jobs:
           rebar3-version: ${{ inputs.rebar3-version }}
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
-      - name: Start services
-        if: ${{ inputs.postgres || inputs.kafka }}
+          ssh-key: ${{ secrets.ssh-key }}
+      - name: Start extra services
+        if: ${{ inputs.extra-services-compose != '' }}
         env:
-          ENABLE_POSTGRES: ${{ inputs.postgres }}
-          POSTGRES_VERSION: ${{ inputs.postgres-version }}
-          ENABLE_KAFKA: ${{ inputs.kafka }}
-          KAFKA_VERSION: ${{ inputs.kafka-version }}
-        run: curl -sL https://raw.githubusercontent.com/Taure/erlang-ci/v1/scripts/start-services.sh | bash
+          COMPOSE_FILE: ${{ inputs.extra-services-compose }}
+        run: docker compose -f "$COMPOSE_FILE" up -d --wait
+      - name: Pre-test setup
+        if: ${{ inputs.pre-test-command != '' }}
+        env:
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: eval "$PRE_TEST_COMMAND"
       - name: Run mutation testing
         id: mutate
         env:
@@ -674,6 +822,8 @@ jobs:
     name: Summary
     if: ${{ always() && inputs.enable-summary && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     needs: [audit, sbom, coverage, mutate]
+    permissions:
+      pull-requests: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

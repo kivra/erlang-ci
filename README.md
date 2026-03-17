@@ -537,6 +537,40 @@ jobs:
 | `mutate-args` | — | Extra args for `rebar3 mutate` |
 | `enable-summary` | `true` | Post CI summary comment on PRs (coverage, audit, SBOM scan results) |
 
+### Custom setup
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `pre-test-command` | — | Shell command to run before tests (e.g., DB migrations, Kafka topic creation) |
+| `extra-services-compose` | — | Path to `docker-compose.yml` for additional services |
+
+`pre-test-command` runs in eunit, CT, and mutation testing jobs after services are started:
+
+```yaml
+jobs:
+  ci:
+    uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
+    with:
+      otp-version: '28'
+      enable-ct: true
+      postgres: true
+      pre-test-command: |
+        rebar3 kura migrate
+        ./scripts/create_kafka_topics.sh
+```
+
+`extra-services-compose` starts additional Docker services alongside the built-in ones:
+
+```yaml
+jobs:
+  ci:
+    uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
+    with:
+      otp-version: '28'
+      enable-ct: true
+      extra-services-compose: docker-compose.test.yml
+```
+
 ### Caching (composite action only)
 
 | Input | Default | Description |
@@ -570,6 +604,37 @@ jobs:
 | `ct-args` | — | Extra args for `rebar3 ct` |
 | `eunit-args` | — | Extra args for `rebar3 eunit` (e.g. `--module=foo_tests`) |
 | `rebar3-compile-args` | — | Extra args for `rebar3 compile` |
+
+### Secrets (reusable workflow)
+
+| Secret | Description |
+|--------|-------------|
+| `ssh-key` | SSH private key for accessing private git dependencies |
+| `hex-api-key` | Hex.pm API key for accessing private packages |
+
+For projects with private rebar3 deps (`{dep, {git, "git@github.com:org/repo.git", ...}}`), pass an SSH key so `rebar3 compile` can fetch them:
+
+```yaml
+jobs:
+  ci:
+    uses: Taure/erlang-ci/.github/workflows/ci.yml@v1
+    secrets:
+      ssh-key: ${{ secrets.PRIVATE_DEPS_SSH_KEY }}
+    with:
+      otp-version: '28'
+```
+
+The composite action accepts `ssh-key` as an input:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: Taure/erlang-ci@v1
+    with:
+      otp-version: '28'
+      ssh-key: ${{ secrets.PRIVATE_DEPS_SSH_KEY }}
+  - run: rebar3 compile
+```
 
 ## PR summary comment
 
