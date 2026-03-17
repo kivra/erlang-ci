@@ -223,6 +223,11 @@ on:
         type: string
         required: false
         default: ''
+      pre-services-command:
+        description: 'Shell command to run before starting extra services (e.g., docker login)'
+        type: string
+        required: false
+        default: ''
       extra-services-compose:
         description: 'Path to docker-compose.yml for additional services'
         type: string
@@ -434,6 +439,11 @@ jobs:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
           ssh-key: ${{ secrets.ssh-key }}
+      - name: Pre-services setup
+        if: ${{ inputs.pre-services-command != '' }}
+        env:
+          PRE_SERVICES_COMMAND: ${{ inputs.pre-services-command }}
+        run: eval "$PRE_SERVICES_COMMAND"
       - name: Start extra services
         if: ${{ inputs.extra-services-compose != '' }}
         env:
@@ -515,6 +525,11 @@ jobs:
           otp-version: ${{ matrix.otp }}
           rebar3-version: ${{ inputs.rebar3-version }}
           ssh-key: ${{ secrets.ssh-key }}
+      - name: Pre-services setup
+        if: ${{ inputs.pre-services-command != '' }}
+        env:
+          PRE_SERVICES_COMMAND: ${{ inputs.pre-services-command }}
+        run: eval "$PRE_SERVICES_COMMAND"
       - name: Start extra services
         if: ${{ inputs.extra-services-compose != '' }}
         env:
@@ -756,6 +771,11 @@ jobs:
           version-file: ${{ inputs.version-file }}
           version-type: ${{ inputs.version-type }}
           ssh-key: ${{ secrets.ssh-key }}
+      - name: Pre-services setup
+        if: ${{ inputs.pre-services-command != '' }}
+        env:
+          PRE_SERVICES_COMMAND: ${{ inputs.pre-services-command }}
+        run: eval "$PRE_SERVICES_COMMAND"
       - name: Start extra services
         if: ${{ inputs.extra-services-compose != '' }}
         env:
